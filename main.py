@@ -11,8 +11,8 @@ GOOGLE_SHEETS_WEBHOOK = "https://script.google.com/macros/s/AKfycbxfjANkic47syU1
 
 class Transaccion(BaseModel):
     fecha: str = ""
-    comercio: str
-    monto: str
+    comercio: str = "Comercio de prueba"
+    monto: str = "0.00"
     categoria: str = ""
     tarjeta: str = "Mastercard"
 
