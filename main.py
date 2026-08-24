@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 from datetime import datetime
 import re
@@ -6,7 +6,9 @@ import requests
 
 app = FastAPI(title="Control de Gastos API")
 
-# Modelo de datos que enviará el iPhone
+# Tu webhook de Google Apps Script
+GOOGLE_SHEETS_WEBHOOK = "https://script.google.com/macros/s/AKfycbxfjANkic47syU1Z7dOQicC3q9etq-kxXUN45zfev4yfu0CcvNWHXprDG1AUYFfy3CXng/exec"
+
 class Transaccion(BaseModel):
     fecha: str = ""
     comercio: str
@@ -14,15 +16,14 @@ class Transaccion(BaseModel):
     categoria: str = ""
     tarjeta: str = "Mastercard"
 
-# Función para categorizar comercios automáticamente
 def auto_categorizar(comercio: str) -> str:
     nombre = comercio.lower()
     
     reglas = {
         "Supermercado": ["super", "la torre", "paiz", "walmart", "pricesmart", "summa"],
-        "Restaurantes y Café": ["cafe", "coffee", "starbucks", "mcdonald", "san martin", "restaurante", "bar", "pizza", "burger", "tacos"],
+        "Restaurantes y Café": ["cafe", "coffee", "starbucks", "mcdonald", "san martin", "restaurante", "bar", "pizza", "burger", "tacos", "anfora"],
         "Transporte y Gasolina": ["uber", "didi", "gasolinera", "shell", "puma", "uno", "texaco"],
-        "Salud y Fitness": ["gym", "smartfit", "gimnasio", "farmacia", "meykos", "galeno", "cruz verde", "suplementos"],
+        "Salud y Fitness": ["gym", "smartfit", "gimnasio", "farmacia", "meykos", "galeno", "cruz verde", "suplementos", "gnc"],
         "Servicios y Suscripciones": ["spotify", "netflix", "apple", "google", "amazon", "claro", "tigo", "eegsa", "empagua"]
     }
     
@@ -32,11 +33,9 @@ def auto_categorizar(comercio: str) -> str:
             
     return "Otros / General"
 
-# Función para limpiar el monto a número flotante
 def limpiar_monto(monto_raw: str) -> float:
     try:
-        # Remueve símbolos como Q, $, comas y espacios
-        limpio = re.sub(r"[^\d.]", "", monto_raw.replace(",", ""))
+        limpio = re.sub(r"[^\d.]", "", str(monto_raw).replace(",", ""))
         return float(limpio) if limpio else 0.0
     except Exception:
         return 0.0
@@ -47,21 +46,30 @@ def home():
 
 @app.post("/transaccion")
 def recibir_transaccion(item: Transaccion):
-    # 1. Limpieza de datos
     monto_numerico = limpiar_monto(item.monto)
     categoria_final = item.categoria if item.categoria else auto_categorizar(item.comercio)
     fecha_final = item.fecha if item.fecha else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    registro = {
+    payload = {
         "fecha": fecha_final,
         "comercio": item.comercio.strip(),
-        "monto": monto_numerico,
+        "monto": str(monto_numerico),
         "categoria": categoria_final,
         "tarjeta": item.tarjeta
     }
     
-    # Aquí puedes imprimir en consola o conectarlo a tu base de datos / hoja
-    print(f"Nuevo gasto registrado: {registro}")
+    # Reenvío de datos limpios y categorizados a Google Sheets
+    try:
+        res = requests.post(GOOGLE_SHEETS_WEBHOOK, json=payload, timeout=10)
+        sheets_status = res.status_code
+    except Exception as e:
+        sheets_status = str(e)
+    
+    return {
+        "status": "ok",
+        "datos": payload,
+        "sheets_response": sheets_status
+    }
     
     return {
         "status": "ok",
